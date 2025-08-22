@@ -55,3 +55,51 @@ async def webhook(request: Request):
         raise HTTPException(400, "text required")
     publish({"type":"task", "title":"TASK", "lines":[text], "cut": True})
     return {"ok": True}
+    from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import Form
+
+UI_PASS = os.getenv("UI_PASS", "set_me")
+
+HTML_PAGE = """
+<!doctype html><meta charset="utf-8">
+<title>Printer UI</title>
+<style>
+ body{font-family:system-ui;margin:2rem;max-width:720px}
+ textarea, input[type=text], input[type=password]{width:100%;padding:.6rem;margin:.3rem 0}
+ button{padding:.6rem 1rem;cursor:pointer}
+ .ok{background:#e6ffed;padding:.6rem;border-radius:.4rem;margin:.6rem 0}
+ .err{background:#ffecec;padding:.6rem;border-radius:.4rem;margin:.6rem 0}
+</style>
+<h1>Quittungsdruck</h1>
+<form method="post" action="/ui/print">
+  <label>Titel</label>
+  <input type="text" name="title" value="MORGEN" />
+  <label>Zeilen (eine pro Zeile)</label>
+  <textarea name="lines" placeholder="Lesen – 10 Min&#10;Kaffee machen"></textarea>
+  <label>Passwort</label>
+  <input type="password" name="pass" placeholder="UI Passwort" />
+  <button type="submit">Drucken</button>
+</form>
+{{MSG}}
+"""
+
+def page(msg=""):
+    return HTMLResponse(HTML_PAGE.replace("{{MSG}}", msg))
+
+@app.get("/ui", response_class=HTMLResponse)
+def ui():
+    return page()
+
+@app.post("/ui/print", response_class=HTMLResponse)
+async def ui_print(title: str = Form("TASKS"), lines: str = Form(""), pass_: str = Form(..., alias="pass")):
+    if pass_ != UI_PASS:
+        return page('<div class="err">Falsches Passwort</div>')
+    payload = {
+        "type":"task",
+        "title": title.strip() or "TASKS",
+        "lines": [ln.strip() for ln in lines.splitlines() if ln.strip()],
+        "cut": True
+    }
+    publish(payload)
+    return page('<div class="ok">Gesendet ✅</div>')
+
