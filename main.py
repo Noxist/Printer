@@ -1,6 +1,7 @@
 import os, ssl, json, time
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 import paho.mqtt.client as mqtt
 
@@ -11,10 +12,12 @@ MQTT_USER   = os.getenv("MQTT_USERNAME")
 MQTT_PASS   = os.getenv("MQTT_PASSWORD")
 MQTT_TLS    = os.getenv("MQTT_TLS", "true").lower() == "true"
 TOPIC       = os.getenv("PRINT_TOPIC", "print/tickets")
+UI_PASS     = os.getenv("UI_PASS", "set_me")
 
 app = FastAPI(title="Printer API")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
+# MQTT Client
 client = mqtt.Client()
 if MQTT_TLS:
     client.tls_set(cert_reqs=ssl.CERT_REQUIRED)
@@ -55,11 +58,8 @@ async def webhook(request: Request):
         raise HTTPException(400, "text required")
     publish({"type":"task", "title":"TASK", "lines":[text], "cut": True})
     return {"ok": True}
-    from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi import Form
 
-UI_PASS = os.getenv("UI_PASS", "set_me")
-
+# --- Minimales UI ---
 HTML_PAGE = """
 <!doctype html><meta charset="utf-8">
 <title>Printer UI</title>
@@ -102,4 +102,3 @@ async def ui_print(title: str = Form("TASKS"), lines: str = Form(""), pass_: str
     }
     publish(payload)
     return page('<div class="ok">Gesendet ✅</div>')
-
