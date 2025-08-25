@@ -12,7 +12,6 @@ from PIL import Image, ImageDraw, ImageFont
 
 # ----------------- Konfiguration -----------------
 APP_API_KEY = os.getenv("API_KEY", "change_me")
-
 MQTT_HOST   = os.getenv("MQTT_HOST")
 MQTT_PORT   = int(os.getenv("MQTT_PORT", "8883"))
 MQTT_USER   = os.getenv("MQTT_USERNAME")
@@ -28,6 +27,12 @@ TZ = ZoneInfo(os.getenv("TIMEZONE", "Europe/Zurich"))
 
 # Druckbreite: 72mm * 8 dpmm = 576 px (HS-830 Standard)
 PRINT_WIDTH_PX = int(os.getenv("PRINT_WIDTH_PX", "576"))
+
+# ----------------- Fonts -----------------
+FONT_TITLE = os.getenv("FONT_FILE_TITLE", "ttf/DejaVuSans-Bold.ttf")
+FONT_BODY  = os.getenv("FONT_FILE_BODY", "ttf/DejaVuSans.ttf")
+SIZE_TITLE = int(os.getenv("FONT_SIZE_TITLE", "36"))   # Titel-Schriftgrösse
+SIZE_BODY  = int(os.getenv("FONT_SIZE_BODY", "28"))   # Text-Schriftgrösse
 
 # ----------------- App & MQTT -----------------
 app = FastAPI(title="Printer API")
@@ -380,5 +385,6 @@ async def ui_print_image(
     if set_cookie:
         issue_cookie(resp)
     return resp
+
 
 
