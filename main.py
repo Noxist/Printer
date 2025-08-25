@@ -68,23 +68,32 @@ def pil_to_base64_png(img: Image.Image) -> str:
 
 def render_text_ticket(title: str, lines: list[str], add_datetime: bool = True) -> Image.Image:
     margin = 20
-    line_h = 36
-    font_title = ImageFont.load_default()
-    font_body  = ImageFont.load_default()
-    text_lines = []
+    line_h = SIZE_BODY + 10  # Zeilenhöhe dynamisch
+    font_title = ImageFont.truetype(FONT_TITLE, SIZE_TITLE)
+    font_body  = ImageFont.truetype(FONT_BODY, SIZE_BODY)
+
+    text_lines: list[tuple[str, str]] = []
     if title.strip():
         text_lines.append(("__title__", title.strip()))
     text_lines += [("body", ln) for ln in lines if ln.strip()]
     if add_datetime:
         text_lines.append(("meta", now_str()))
+
+    # Höhe berechnen
     h = max(margin*2 + line_h * len(text_lines), 120)
     img = Image.new("L", (PRINT_WIDTH_PX, h), color=255)
     draw = ImageDraw.Draw(img)
+
     y = margin
     for kind, txt in text_lines:
-        draw.text((0, y), txt, font=(font_title if kind == "__title__" else font_body), fill=0)
+        if kind == "__title__":
+            draw.text((0, y), txt, font=font_title, fill=0)
+        else:
+            draw.text((0, y), txt, font=font_body, fill=0)
         y += line_h
+
     return img
+
 
 # ----------------- Security -----------------
 def check_api_key(req: Request):
@@ -371,4 +380,5 @@ async def ui_print_image(
     if set_cookie:
         issue_cookie(resp)
     return resp
+
 
