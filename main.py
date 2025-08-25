@@ -46,58 +46,67 @@ if MQTT_USER or MQTT_PASS:
 client.connect(MQTT_HOST, MQTT_PORT, 60)
 client.loop_start()
 
-# ----------------- Utils -----------------
-def now_str() -> str:
-    return datetime.now(TZ).strftime("%d.%m.%Y %H:%M")
+from textwrap import wrap
 
-def make_ticket_id() -> str:
-    return f"web-{int(time.time()*1000)}-{uuid.uuid4().hex[:6]}"
-
-def mqtt_publish_image_base64(b64_png: str, cut_paper: int = 1, paper_width_mm: int = 0, paper_height_mm: int = 0):
-    payload = {
-        "ticket_id": make_ticket_id(),
-        "data_type": "png",
-        "data_base64": b64_png,
-        "paper_type": 0,
-        "paper_width_mm": paper_width_mm,
-        "paper_height_mm": paper_height_mm,
-        "cut_paper": cut_paper
-    }
-    client.publish(TOPIC, json.dumps(payload), qos=PUBLISH_QOS, retain=False)
-
-def pil_to_base64_png(img: Image.Image) -> str:
-    buf = io.BytesIO()
-    img = img.convert("1")  # s/w, Dithering
-    img.save(buf, format="PNG", optimize=True)
-    return base64.b64encode(buf.getvalue()).decode("ascii")
+MARGIN_X = 20   # linker & rechter Rand
+MARGIN_Y = 20   # oberer Rand
+SIZE_TITLE = 32
+SIZE_BODY = 28
+FONT_TITLE = "ttf/DejaVuSans-Bold.ttf"
+FONT_BODY  = "ttf/DejaVuSans.ttf"
 
 def render_text_ticket(title: str, lines: list[str], add_datetime: bool = True) -> Image.Image:
-    margin = 20
-    line_h = SIZE_BODY + 10  # Zeilenhöhe dynamisch
     font_title = ImageFont.truetype(FONT_TITLE, SIZE_TITLE)
     font_body  = ImageFont.truetype(FONT_BODY, SIZE_BODY)
 
+    # Wrapping vorbereiten
+    max_width = PRINT_WIDTH_PX - 2*MARGIN_X
     text_lines: list[tuple[str, str]] = []
     if title.strip():
         text_lines.append(("__title__", title.strip()))
     text_lines += [("body", ln) for ln in lines if ln.strip()]
-    if add_datetime:
-        text_lines.append(("meta", now_str()))
 
-    # Höhe berechnen
-    h = max(margin*2 + line_h * len(text_lines), 120)
+    # Wrap jede Zeile
+    wrapped_lines = []
+    for kind, txt in text_lines:
+        font = font_title if kind == "__title__" else font_body
+        words = txt.split()
+        line = ""
+        for word in words:
+            test = (line + " " + word).strip()
+            w, _ = font.getsize(test)
+            if w <= max_width:
+                line = test
+            else:
+                wrapped_lines.append((kind, line))
+                line = word
+        if line:
+            wrapped_lines.append((kind, line))
+
+    # Höhe berechnen (Zeilenhöhe dynamisch)
+    line_h = SIZE_BODY + 10
+    h = max(MARGIN_Y*2 + line_h * len(wrapped_lines) + 50, 120)
     img = Image.new("L", (PRINT_WIDTH_PX, h), color=255)
     draw = ImageDraw.Draw(img)
 
-    y = margin
-    for kind, txt in text_lines:
-        if kind == "__title__":
-            draw.text((0, y), txt, font=font_title, fill=0)
-        else:
-            draw.text((0, y), txt, font=font_body, fill=0)
+    # Datum oben rechts
+    if add_datetime:
+        date_str = now_str()
+        w, _ = font_body.getsize(date_str)
+        draw.text((PRINT_WIDTH_PX - MARGIN_X - w, MARGIN_Y), date_str, font=font_body, fill=0)
+        offset_y = MARGIN_Y + line_h  # Platz nach Datum
+    else:
+        offset_y = MARGIN_Y
+
+    # Text zeichnen
+    y = offset_y
+    for kind, txt in wrapped_lines:
+        font = font_title if kind == "__title__" else font_body
+        draw.text((MARGIN_X, y), txt, font=font, fill=0)
         y += line_h
 
     return img
+
 
 
 # ----------------- Security -----------------
@@ -385,6 +394,7 @@ async def ui_print_image(
     if set_cookie:
         issue_cookie(resp)
     return resp
+
 
 
 
