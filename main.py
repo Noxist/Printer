@@ -55,8 +55,24 @@ SIZE_BODY = 28
 FONT_TITLE = "ttf/DejaVuSans-Bold.ttf"
 FONT_BODY  = "ttf/DejaVuSans.ttf"
 
-def now_str() -> str:
-    return datetime.now(TZ).strftime("%d.%m.%Y %H:%M")
+def mqtt_publish_image_base64(b64_png: str, cut_paper: int = 1, paper_width_mm: int = 0, paper_height_mm: int = 0):
+    payload = {
+        "ticket_id": f"web-{int(time.time()*1000)}-{uuid.uuid4().hex[:6]}",
+        "data_type": "png",
+        "data_base64": b64_png,
+        "paper_type": 0,
+        "paper_width_mm": paper_width_mm,
+        "paper_height_mm": paper_height_mm,
+        "cut_paper": cut_paper
+    }
+    client.publish(TOPIC, json.dumps(payload), qos=PUBLISH_QOS, retain=False)
+
+def pil_to_base64_png(img: Image.Image) -> str:
+    buf = io.BytesIO()
+    img = img.convert("1")  # s/w, Dithering
+    img.save(buf, format="PNG", optimize=True)
+    return base64.b64encode(buf.getvalue()).decode("ascii")
+
 
 def render_text_ticket(title: str, lines: list[str], add_datetime: bool = True) -> Image.Image:
     font_title = ImageFont.truetype(FONT_TITLE, SIZE_TITLE)
@@ -397,6 +413,7 @@ async def ui_print_image(
     if set_cookie:
         issue_cookie(resp)
     return resp
+
 
 
 
