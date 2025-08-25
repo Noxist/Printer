@@ -5,7 +5,7 @@ from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, Request, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, RedirectResponse, Response, PlainTextResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from pydantic import BaseModel
 import paho.mqtt.client as mqtt
 from PIL import Image, ImageDraw, ImageFont
@@ -19,6 +19,7 @@ MQTT_USER   = os.getenv("MQTT_USERNAME")
 MQTT_PASS   = os.getenv("MQTT_PASSWORD")
 MQTT_TLS    = os.getenv("MQTT_TLS", "true").lower() == "true"
 TOPIC       = os.getenv("PRINT_TOPIC", "print/tickets")
+PUBLISH_QOS = int(os.getenv("PRINT_QOS", "2"))   # <-- QoS konfigurierbar (Default 2)
 
 UI_PASS = os.getenv("UI_PASS", "set_me")
 COOKIE_NAME = "ui_token"
@@ -48,17 +49,16 @@ def make_ticket_id() -> str:
     return f"web-{int(time.time()*1000)}-{uuid.uuid4().hex[:6]}"
 
 def mqtt_publish_image_base64(b64_png: str, cut_paper: int = 1, paper_width_mm: int = 0, paper_height_mm: int = 0):
-    """Kompatibel zur HS-830 Cloud JSON (Bilddruck über Base64-PNG)."""
     payload = {
         "ticket_id": make_ticket_id(),
         "data_type": "png",
         "data_base64": b64_png,
         "paper_type": 0,
-        "paper_width_mm": paper_width_mm,    # 0 = Drucker-Default
-        "paper_height_mm": paper_height_mm,  # 0 = endlos
-        "cut_paper": cut_paper               # 1 = am Ende schneiden
+        "paper_width_mm": paper_width_mm,
+        "paper_height_mm": paper_height_mm,
+        "cut_paper": cut_paper
     }
-    client.publish(TOPIC, json.dumps(payload), qos=1, retain=False)
+    client.publish(TOPIC, json.dumps(payload), qos=PUBLISH_QOS, retain=False)
 
 def pil_to_base64_png(img: Image.Image) -> str:
     buf = io.BytesIO()
@@ -71,14 +71,12 @@ def render_text_ticket(title: str, lines: list[str], add_datetime: bool = True) 
     line_h = 36
     font_title = ImageFont.load_default()
     font_body  = ImageFont.load_default()
-
-    text_lines: list[tuple[str, str]] = []
+    text_lines = []
     if title.strip():
         text_lines.append(("__title__", title.strip()))
     text_lines += [("body", ln) for ln in lines if ln.strip()]
     if add_datetime:
         text_lines.append(("meta", now_str()))
-
     h = max(margin*2 + line_h * len(text_lines), 120)
     img = Image.new("L", (PRINT_WIDTH_PX, h), color=255)
     draw = ImageDraw.Draw(img)
@@ -88,7 +86,7 @@ def render_text_ticket(title: str, lines: list[str], add_datetime: bool = True) 
         y += line_h
     return img
 
-# ----------------- Security (API-Key & UI-Cookie) -----------------
+# ----------------- Security -----------------
 def check_api_key(req: Request):
     key = req.headers.get("x-api-key") or req.query_params.get("key")
     if key != APP_API_KEY:
@@ -109,10 +107,8 @@ def verify_token(token: str) -> bool:
         return False
 
 def require_ui_auth(request: Request) -> bool:
-    # 1) API-Key erlaubt direkten Zugriff
     if (request.headers.get("x-api-key") or request.query_params.get("key")) == APP_API_KEY:
         return True
-    # 2) Cookie
     tok = request.cookies.get(COOKIE_NAME)
     return bool(tok and verify_token(tok))
 
@@ -130,16 +126,13 @@ def issue_cookie(resp: Response):
     )
 
 def ui_auth_state(request: Request, pass_: str | None, remember: bool) -> tuple[bool, bool]:
-    """
-    Returns (authed, should_set_cookie)
-    """
     if require_ui_auth(request):
         return True, False
     if pass_ is not None and pass_ == UI_PASS:
         return True, bool(remember)
     return False, False
 
-# ----------------- Schemas (programmatic) -----------------
+# ----------------- Schemas -----------------
 class PrintPayload(BaseModel):
     title: str = "TASKS"
     lines: list[str] = []
@@ -150,12 +143,11 @@ class RawPayload(BaseModel):
     text: str
     add_datetime: bool = False
 
-# ----------------- API: Health -----------------
+# ----------------- API -----------------
 @app.get("/")
 def ok():
-    return {"ok": True, "topic": TOPIC}
+    return {"ok": True, "topic": TOPIC, "qos": PUBLISH_QOS}
 
-# ----------------- API: Programmatic -----------------
 @app.post("/print")
 async def print_job(p: PrintPayload, request: Request):
     check_api_key(request)
@@ -379,3 +371,4 @@ async def ui_print_image(
     if set_cookie:
         issue_cookie(resp)
     return resp
+
