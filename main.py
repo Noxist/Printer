@@ -55,6 +55,9 @@ SIZE_BODY = 28
 FONT_TITLE = "ttf/DejaVuSans-Bold.ttf"
 FONT_BODY  = "ttf/DejaVuSans.ttf"
 
+def now_str() -> str:
+    return datetime.now(TZ).strftime("%d.%m.%Y %H:%M")
+
 def render_text_ticket(title: str, lines: list[str], add_datetime: bool = True) -> Image.Image:
     font_title = ImageFont.truetype(FONT_TITLE, SIZE_TITLE)
     font_body  = ImageFont.truetype(FONT_BODY, SIZE_BODY)
@@ -394,6 +397,7 @@ async def ui_print_image(
     if set_cookie:
         issue_cookie(resp)
     return resp
+
 
 
 
